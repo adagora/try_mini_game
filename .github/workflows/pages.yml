@@ -1,0 +1,52 @@
+name: pages
+
+# Publishes demos/super_slash_boss_3d to GitHub Pages. The demo is a plain
+# static ES-module site — no bundler, no runtime dependencies — so the only
+# build step is regenerating src/generated/game.js from bend/game.bend.
+# tools/build.mjs uses node builtins only, so no npm install is needed.
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+# Least privilege: read the repo, mint the OIDC token deploy-pages needs,
+# write the Pages deployment. Nothing else.
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+# One deployment at a time. In-flight runs are allowed to finish so a
+# half-uploaded artifact is never published.
+concurrency:
+  group: pages
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: actions/setup-node@v7
+        with:
+          node-version: "22"
+
+      - name: Regenerate the Bend-compiled game module
+        working-directory: demos/super_slash_boss_3d
+        run: node tools/build.mjs
+
+      - uses: actions/configure-pages@v6
+
+      # The demo directory becomes the site root, so the game is served at
+      # https://<user>.github.io/<repo>/ with its existing relative paths.
+      - uses: actions/upload-pages-artifact@v5
+        with:
+          path: demos/super_slash_boss_3d
+
+      - id: deployment
+        uses: actions/deploy-pages@v5
