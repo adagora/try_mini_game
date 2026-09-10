@@ -1,0 +1,6 @@
+name = "SuperSlash"
+version = "1.0.0"
+defaultTargets = ["SuperSlash"]
+
+[[lean_lib]]
+name = "SuperSlash"

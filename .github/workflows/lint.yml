@@ -1,0 +1,281 @@
+name: lint
+
+# Tool versions are deliberately pinned (exact, not range) to prevent
+# silent CI drift — e.g. a new ruff release adding rules to a selected
+# sub-code set, or a shellcheck release enabling additional checks by
+# default. Bump intentionally via PR; update both pyproject.toml's
+# target-version and the pins below together when relevant.
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+# Explicit read-only: omitting permissions would inherit the repository
+# default, which is not guaranteed to be read-only. Nothing here writes.
+permissions:
+  contents: read
+
+jobs:
+  ruff:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.13"
+
+      - name: Install ruff (pinned)
+        run: pip install 'ruff==0.15.13'
+
+      - name: ruff check (config in pyproject.toml)
+        run: ruff check plugins/lean4/
+
+      - name: ruff format --check
+        run: ruff format --check plugins/lean4/
+
+  python-tests:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: actions/setup-python@v6
+        with:
+          # Documented runtime floor (pyproject.toml's target-version =
+          # "py310") so version-sensitive syntax breaks loudly here rather
+          # than on a user's machine.
+          python-version: "3.10"
+
+      # stdlib unittest only — no pins needed (nothing to install).
+      # Both files listed explicitly: test_ordering.py existed for months
+      # without ever being executed in CI (the same silent-coverage-gap
+      # class that #146 found for the bash suite, where a green step hid a
+      # self-SKIPping test run).
+      - name: Unit tests — lib/scripts (stdlib unittest, no deps)
+        run: |
+          python3 plugins/lean4/lib/scripts/tests/test_ordering.py
+          python3 plugins/lean4/lib/scripts/tests/test_sorry_analyzer.py
+          python3 plugins/lean4/lib/scripts/tests/test_file_baseline.py
+          python3 plugins/lean4/lib/scripts/tests/test_project_context.py
+          python3 plugins/lean4/lib/scripts/tests/test_checkpoint_mathlib_roots.py
+          python3 plugins/lean4/tests/test_review_schema.py
+          python3 plugins/lean4/tests/test_run_contract.py
+
+      # command_args parser suite. Run via discover so a new test_parser_*.py
+      # cannot silently skip CI (the same coverage-gap class the comment above
+      # describes). Each file self-inserts lib/ on sys.path.
+      - name: Unit tests — command_args parser suite
+        run: |
+          python3 -m unittest discover -s plugins/lean4/tests/command_args -p 'test_*.py' -v
+
+      - name: Native Codex adapter contract (Python 3.10)
+        run: /bin/bash plugins/lean4/tests/test_codex_adapter.sh
+
+  mypy:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: actions/setup-python@v6
+        with:
+          # Pin to the documented runtime floor (pyproject.toml's
+          # target-version = "py310") so mypy's stdlib stubs and
+          # version-sensitive checks match what the code actually runs
+          # against. mypy's --python-version flag below makes the
+          # target explicit even when the runner Python drifts.
+          python-version: "3.10"
+
+      - name: Install mypy (pinned)
+        run: pip install 'mypy==1.20.2'
+
+      - name: mypy --strict (lib/ + hooks/, targeting Python 3.10)
+        # MYPYPATH=lib mirrors validate_user_prompt.py's sys.path
+        # manipulation so `from command_args import ...` resolves the way
+        # it does at runtime, without needing a packaged install.
+        # --python-version 3.10 is the documented compatibility floor;
+        # without it mypy would analyze under whatever interpreter
+        # version it runs on.
+        working-directory: plugins/lean4
+        env:
+          MYPYPATH: lib
+        run: mypy --python-version 3.10 --strict lib/ hooks/
+
+  shellcheck:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+
+      # Install a pinned shellcheck binary from the upstream release
+      # tarball rather than relying on ubuntu-latest's pre-installed
+      # version (which floats — 0.9.0 today, anything later tomorrow).
+      - name: Install shellcheck 0.10.0
+        run: |
+          cd "$RUNNER_TEMP"
+          curl -fsSL \
+            https://github.com/koalaman/shellcheck/releases/download/v0.10.0/shellcheck-v0.10.0.linux.x86_64.tar.xz \
+            -o shellcheck.tar.xz
+          tar -xJf shellcheck.tar.xz
+          echo "$RUNNER_TEMP/shellcheck-v0.10.0" >> "$GITHUB_PATH"
+
+      - name: Verify shellcheck version (assert exactly 0.10.0)
+        # Belt-and-suspenders against PATH-order surprises: even though
+        # the previous step prepends our pinned binary's dir to
+        # GITHUB_PATH, the grep ensures any other shellcheck on PATH
+        # (e.g. ubuntu-latest's preinstalled 0.9.0) doesn't silently
+        # win the lookup. -F treats the pattern as a fixed literal
+        # string; -x requires a full-line match so neither future
+        # "0.10.0-rc1" nor "0.10.01" would pass.
+        run: |
+          shellcheck --version
+          shellcheck --version | grep -Fxq 'version: 0.10.0'
+
+      - name: shellcheck (hooks/, lib/scripts/, tools/, bin/lean4-skills-*)
+        # Flags match the invocation Holger validated against in PR #120:
+        # --shell=bash forces bash dialect; -x follows `source` references;
+        # SC2016 (expressions in single quotes) is excluded because several
+        # scripts use single-quoted regex literals intentionally.
+        # The bin/lean4-skills-* wrappers (added in #130, for #117) are extensionless
+        # bash scripts, included explicitly so shellcheck covers them too.
+        run: |
+          shellcheck --shell=bash -x --exclude=SC2016 \
+            plugins/lean4/hooks/*.sh \
+            plugins/lean4/lib/scripts/*.sh \
+            plugins/lean4/tools/*.sh \
+            plugins/lean4/tests/test_codex_adapter.sh \
+            plugins/lean4/bin/lean4-skills-*
+
+  actionlint:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+
+      # Static validation of the workflow files themselves — YAML
+      # shape, Actions expression syntax, action inputs. Added after an
+      # empty dollar-double-brace expression inside a *shell comment*
+      # in release.yml shipped an invalid workflow file to main (the
+      # v4.5.6 release run failed with "An expression was expected"):
+      # GitHub evaluates expressions anywhere in a value, comments
+      # included, plain YAML parsing can't see that class, and an
+      # invalid workflow file only surfaces post-merge as 0-second
+      # phantom run failures that never appear in PR checks. actionlint
+      # catches it pre-merge (its [expression] check flags exactly that
+      # error). Pinned exact like shellcheck below.
+      - name: Install actionlint 1.7.12
+        run: |
+          cd "$RUNNER_TEMP"
+          curl -fsSL \
+            https://github.com/rhysd/actionlint/releases/download/v1.7.12/actionlint_1.7.12_linux_amd64.tar.gz \
+            -o actionlint.tar.gz
+          tar -xzf actionlint.tar.gz actionlint
+          ./actionlint --version | head -1 | grep -Fxq '1.7.12'
+
+      # -ignore: actionlint 1.7.12's concurrency schema predates
+      # GitHub's opt-in queueing and misreports `queue: max` as an
+      # unknown key — GitHub itself accepts it (documented feature, and
+      # the live validator parsed past it when release.yml broke for
+      # the unrelated reason above). Drop the -ignore once actionlint
+      # learns the key.
+      # No positional file args: in a git repository actionlint
+      # auto-discovers .github/workflows/*.{yml,yaml}, so a future
+      # .yaml workflow can't silently escape the gate the way a *.yml
+      # glob would allow.
+      - name: actionlint (.github/workflows)
+        run: |
+          "$RUNNER_TEMP/actionlint" \
+            -ignore 'unexpected key "queue" for "concurrency" section'
+
+  wrapper-smoke:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+
+      # Executes every bin/lean4-skills-* wrapper argless from a
+      # non-repository cwd under a scrubbed environment, asserting each
+      # wrapper's exact expected exit code — the runtime gate Check 28
+      # deliberately stops short of (it only proves each wrapper's
+      # delegation target exists). The macOS Bash 3.2 leg of the same
+      # suite runs in bash3-compat.yml.
+      - name: Wrapper runtime smoke test (argless, non-repo cwd)
+        run: bash plugins/lean4/tests/test_wrapper_runtime.sh
+
+  release-contract:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+
+      # Pin the interpreter this job's /disprove self-tests run under to the
+      # documented /disprove floor (Python 3.11+, stdlib tomllib) instead of
+      # whatever python3 ubuntu-latest ships — so the suites exercise the
+      # minimum supported version reproducibly rather than a floating newer one.
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.11"
+
+      # Until this job, lint_docs.sh was maintainer-run only: CI ran
+      # ruff/mypy/shellcheck plus the bash3 self-tests, and those
+      # self-tests deliberately ignore lint_docs' overall exit status
+      # (they assert specific Check 8c/8e messages). So Check 23's
+      # release-metadata gate (plugin.json ↔ marketplace.json ↔
+      # CHANGELOG sync) was convention, not enforcement — while
+      # release.yml relies on it holding for every commit on main.
+      - name: lint_docs.sh (all checks, incl. Check 23 release metadata)
+        run: bash plugins/lean4/tools/lint_docs.sh
+
+      - name: test_contracts.sh (wrapper/doc/agent contract suite)
+        run: bash plugins/lean4/tools/test_contracts.sh
+
+      # Executable evidence for the /disprove transaction contract that Check 39
+      # pins (#166): gate blocks may hold a command (the same-run `#print axioms`
+      # probe), drop-role preserves the artifact, rollback removes both. The
+      # helper is Python; no macOS leg needed.
+      - name: Self-test — disprove artifact transactions
+        run: bash plugins/lean4/tests/test_disprove_artifact_txn.sh
+
+      # The remaining /disprove suites and the cycle tracker were run by no
+      # workflow (audit after #195). They live here rather than in the
+      # python-tests job because the disprove scripts require Python 3.11+
+      # (stdlib tomllib) while python-tests pins the documented 3.10 floor;
+      # this job pins Python 3.11 via setup-python (see the job header).
+      - name: Self-test — disprove emit-artifact writer
+        run: bash plugins/lean4/tests/test_disprove_emit_artifact.sh
+
+      - name: Self-test — disprove target profile
+        run: bash plugins/lean4/tests/test_disprove_target_profile.sh
+
+      - name: Self-test — disprove target resolve
+        run: bash plugins/lean4/tests/test_disprove_target_resolve.sh
+
+      - name: Self-test — disprove end-to-end flow
+        run: bash plugins/lean4/tests/test_disprove_flow.sh
+
+      - name: Unit tests — disprove method registry + probe (Python 3.11+)
+        run: |
+          python3 --version
+          python3 plugins/lean4/tests/test_disprove_methods.py
+          python3 plugins/lean4/tests/test_disprove_method_probe.py
+
+      - name: Self-test — cycle tracker
+        run: bash plugins/lean4/tests/test_cycle_tracker.sh
+
+      # Also run the lint_docs self-test on Linux so its staleness probes
+      # (7–8) exercise the GNU `date -d` branch of Check 20's portable date
+      # parser; the macOS bash3-compat job runs the same probes against the
+      # BSD `date -j -f` branch.
+      - name: Self-test — lint_docs.sh (GNU-date staleness probes)
+        run: bash plugins/lean4/tests/test_lint_docs.sh
+
+      # Regression suite for the extraction contract itself (prefix
+      # collision, duplicate headings, empty section, malformed/missing
+      # version) — fixture-based, so it covers the failure cases the
+      # live-CHANGELOG step below can't reach.
+      - name: Self-test — release_notes.sh
+        run: bash plugins/lean4/tests/test_release_notes.sh
+
+      # Belt-and-suspenders on top of Check 23: run the exact extraction
+      # release.yml will run at publish time, against the version this
+      # PR ships, and echo the would-be notes into the job log.
+      - name: Validate release-notes extraction (same script release.yml runs)
+        run: |
+          version=$(python3 -c "import json; print(json.load(open('plugins/lean4/.claude-plugin/plugin.json'))['version'])")
+          bash plugins/lean4/tools/release_notes.sh "$version"

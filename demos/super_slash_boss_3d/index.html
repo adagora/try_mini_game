@@ -1,0 +1,54 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="theme-color" content="#08171d">
+  <meta name="description" content="An offline procedural 3D duel beneath an eclipsed sun. Face the Hollow Ronin in Super Slash Boss 3D.">
+  <title>Super Slash Boss 3D — The Hollow Ronin</title>
+  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect width='64' height='64' rx='14' fill='%230c222a'/%3E%3Cpath d='M19 48L43 12 32 39 46 28 27 54 32 36Z' fill='%23d9e990'/%3E%3C/svg%3E">
+  <link rel="stylesheet" href="./style.css">
+</head>
+<body>
+  <canvas id="game" aria-label="3D arena: use WASD to move, J to attack, K for special, I to jump, L to shield" tabindex="0"></canvas>
+  <div class="frame-corners" aria-hidden="true"></div>
+  <header class="topbar">
+    <a class="brand" href="./" aria-label="Super Slash home"><span class="brand-mark">ϟ</span><span>SUPER SLASH<small>BOSS 3D</small></span></a>
+    <div class="location"><span class="dot"></span> THE FRACTURED SHRINE <span class="divider">/</span> <span class="muted">DUEL 001</span></div>
+    <nav aria-label="Game options"><button id="sound" class="icon-button" aria-label="Toggle sound" title="Sound (M)">♪ <span id="sound-label">ON</span></button><button id="pause" class="icon-button" aria-label="Pause game" title="Pause (Escape)">Ⅱ</button><button id="fullscreen" class="icon-button" aria-label="Fullscreen" title="Fullscreen (F)">⛶</button></nav>
+  </header>
+
+  <section id="boss-hud" class="boss-hud" aria-label="Boss status">
+    <div class="boss-heading"><span class="eyebrow">THE HOLLOW RONIN</span><span id="phase">I <span class="muted">/ AWAKENING</span></span></div>
+    <div class="boss-track"><div id="boss-health"></div></div>
+    <div class="boss-sub"><span>KATANA-BEARING CALAMITY</span><span id="boss-hp">720 / 720</span></div>
+  </section>
+
+  <main id="intro" class="intro">
+    <div class="eyebrow intro-eyebrow"><span class="small-line"></span> A PROCEDURAL BOSS ENCOUNTER</div>
+    <h1>ONE BLADE.<br><span>NO MERCY.</span></h1>
+    <p>A shrine suspended in the void.<br>A creature that cuts through everything.<br>And you, standing in its way.</p>
+    <button id="start" class="primary"><span>ENTER THE DUEL</span><span aria-hidden="true">↗</span></button>
+    <div class="start-hint"><kbd>ENTER</kbd> to begin <span>·</span> 3 lives. Make them count.</div>
+  </main>
+
+  <aside id="encounter" class="encounter"><span class="eyebrow">KNOW YOUR ENEMY</span><h2>The Hollow Ronin</h2><p>Watch the red windup. Get above the blade.<br>Strike when the creature rests.</p><div class="encounter-footer"><span class="warning-symbol">◇</span> EVEN THE SHRINE CAN BE CUT</div></aside>
+
+  <div id="callout" class="callout" aria-live="polite"></div>
+  <div id="hit-flash" class="hit-flash" aria-hidden="true"></div>
+  <section id="player-hud" class="player-hud hidden" aria-label="Player status">
+    <div class="fighter-badge">ϟ</div><div class="fighter-info"><div class="eyebrow">YOU <span id="stocks" aria-label="Lives remaining">◆ ◆ ◆</span></div><div class="damage"><span id="damage">0</span><small>%</small></div><div class="fighter-name">THE WAYFARER</div></div>
+    <div class="resources"><div class="resource-label">SHIELD <span id="shield-number">100</span></div><div class="resource-track"><div id="shield-meter"></div></div><div class="resource-label">SPECIAL <span id="energy-number">100</span></div><div class="resource-track special-track"><div id="energy-meter"></div></div></div>
+  </section>
+  <div id="combat-info" class="combat-info hidden"><span id="combo">00</span><div>HIT CHAIN<small id="timer">00:00</small></div></div>
+
+  <footer class="footer"><div class="controls" aria-label="Controls"><div><span class="keys"><kbd>W</kbd><kbd>A</kbd><kbd>S</kbd><kbd>D</kbd></span><span>MOVE</span></div><div><kbd>J</kbd><span>ATTACK</span></div><div><kbd>K</kbd><span>SPECIAL</span></div><div><kbd>I</kbd><span>DOUBLE JUMP</span></div><div><kbd>L</kbd><span>SHIELD</span></div></div><div class="footer-note"><span class="dot"></span> OFFLINE · PURELY PROCEDURAL</div></footer>
+
+  <section id="overlay" class="overlay hidden" role="dialog" aria-modal="true" aria-labelledby="overlay-title">
+    <div class="overlay-card"><div id="overlay-eyebrow" class="eyebrow">TAKE A BREATH</div><h2 id="overlay-title">Duel paused.</h2><p id="overlay-copy">The shrine can wait.</p><button id="resume" class="primary">RESUME DUEL <span>↗</span></button><button id="restart" class="secondary">START A NEW DUEL <span>R</span></button><label class="motion-option"><input id="motion" type="checkbox"> Reduce motion &amp; screen shake</label></div>
+  </section>
+  <section id="error" class="error hidden" role="alert"><h2>The shrine could not open.</h2><p id="error-copy"></p></section>
+  <div id="touch-controls" class="touch-controls"><div class="touch-move"><button data-key="KeyW" aria-label="Move forward">W</button><div><button data-key="KeyA" aria-label="Move left">A</button><button data-key="KeyS" aria-label="Move back">S</button><button data-key="KeyD" aria-label="Move right">D</button></div></div><div class="touch-actions"><button data-key="KeyJ">J</button><button data-key="KeyK">K</button><button data-key="KeyI">I</button><button data-key="KeyL">L</button></div></div>
+  <script type="module" src="./src/main.js"></script>
+</body>
+</html>

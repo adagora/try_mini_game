@@ -1,0 +1,16 @@
+# Bugs found and fixed
+
+The requested delegated bug-fix audit found and repaired these issues before delivery.
+
+| Bug | Cause and fix | Verification |
+| --- | --- | --- |
+| Browser and native Bend diverged during dashes and damage. | Directly translating `/` into JavaScript produced fractions. The browser compiler now parses typed expressions, truncates integer division, wraps arithmetic at 24 bits, emits numeric comparison results, checks argument/operand types, and supports explicit signed casts. | Eleven native numeric probes cover signed division/remainder, nested precedence, casts and integer wrap. Full native/browser worlds match at spawn, during a slash, after idle and scripted replays, and after a complete fight. |
+| Damage knockback mixed signed coordinates with unsigned damage. | Adding `+0` is not a Bend numeric cast. All simulation objects/functions now carry native-checked numeric types; the force calculation explicitly calls `u24/to_i24`. | Native Bend type check; 22 damage produces signed knockback `(28, 23, 14)`; full native/browser conformance. |
+| Spawn protection disabled controls for 90 frames; successful shields caused damage hitstun. | One `hurt` counter represented both protection and hitstun. Independent `invulnerable` and `hurt` fields allow immediate spawn controls and uninterrupted successful blocks while retaining damage hitstun and repeat-hit immunity. | First-frame movement/jump/attack/shield checks; blocked and unblocked katana checks; finite double jumps, swept landings, stock loss and terminal-state tests. |
+| A special attack inflicted an unintended second neutral hit. | A special countdown eventually reached the neutral attack's hit frame. A separately delegated fix added `attack_kind`, gated both hit windows, and clears kind on expiry/interruption. | A complete special deals exactly one 64-damage hit; a neutral deals exactly one 24-damage hit. |
+| Scene module could not load because of malformed ronin geometry composition. | Deeply nested tree composition had an unmatched parenthesis. The ronin now combines named pure arm, katana, skirt, and scarf subtrees, and fighter effects use the authoritative `attack_kind`. | JavaScript syntax check, deterministic static/dynamic scene generation, finite instance bounds, and special-color checks across both halves of its countdown. |
+| Lean gate failed after the shield-charge theorem had already been proved. | `simp` discharged the complete cancellation goal, so the following `omega` failed with “no goals to be solved”. Removed only the redundant tactic; theorem statements remain unchanged. | All 17 contracts compile with warnings treated as errors; every theorem's axioms inspected; no placeholders or custom axioms. `PLAN.md` records the exact mathematical-model correspondence limits. |
+
+Run `npm test` for simulation/engine regression tests and `npm run test:bend` for native Bend/HVM conformance. The latter requires Bend 0.2.38 and HVM 2.0.22, discovered from repository-local `.tools/bend/bin`, `PATH`, or the `BEND`/`HVM` environment variables.
+
+The numeric representation and explicit conversion rules follow the [official Bend native-number documentation](https://github.com/HigherOrderCO/Bend/blob/main/docs/native-numbers.md).

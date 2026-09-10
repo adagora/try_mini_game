@@ -1,0 +1,78 @@
+name: bash3-compat
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+jobs:
+  macos-bash3:
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: Verify /bin/bash is Bash 3.2 (macOS default)
+        run: |
+          /bin/bash --version
+          /bin/bash -c '[[ "${BASH_VERSINFO[0]}.${BASH_VERSINFO[1]}" == "3.2" ]] \
+            || { echo "Expected /bin/bash 3.2, got ${BASH_VERSION}"; exit 1; }'
+
+      - name: Static lint — runtime portability checks
+        run: /bin/bash plugins/lean4/tools/lint_runtime_portability.sh
+
+      - name: Self-test — lint catches all advertised policy violations
+        run: /bin/bash plugins/lean4/tests/test_lint_runtime_portability.sh
+
+      - name: Self-test — lint_docs Checks 8c/8e
+        run: /bin/bash plugins/lean4/tests/test_lint_docs.sh
+
+      - name: Self-test — check_axioms_inline (#132)
+        run: /bin/bash plugins/lean4/tests/test_check_axioms_inline.sh
+
+      # BASH_FOR_COMPAT defaults to /bin/bash, which on this runner is
+      # macOS Bash 3.2 — this is the step that makes the suite's
+      # "exercises macOS Bash 3.2 in CI" claim true (the ubuntu
+      # release-contract job runs the same suite under Bash 5).
+      - name: Self-test — release_notes.sh
+        run: /bin/bash plugins/lean4/tests/test_release_notes.sh
+
+      # Executes every bin/ wrapper argless from a non-repo cwd under a
+      # scrubbed env (Check 28 only proves the delegation target
+      # exists). This is the macOS Bash 3.2 leg; ubuntu runs the same
+      # suite in lint.yml's wrapper-smoke job.
+      - name: Self-test — wrapper runtime smoke
+        run: /bin/bash plugins/lean4/tests/test_wrapper_runtime.sh
+
+      - name: Install ripgrep (unused_declarations self-test needs rg or PCRE grep)
+        run: brew install ripgrep
+
+      - name: Self-test — unused_declarations
+        # rg --version is a hard assertion: macOS runners ship neither
+        # ripgrep nor a PCRE-capable grep, so without the install step the
+        # suite self-SKIPs (exit 0) and the rg-regression coverage silently
+        # vanishes while the job stays green. Printing the version makes
+        # the coverage auditable from logs.
+        run: |
+          rg --version
+          /bin/bash plugins/lean4/tests/test_unused_declarations.sh
+
+      - name: Self-test — bootstrap env honesty + PATH persistence (#108)
+        run: /bin/bash plugins/lean4/tests/test_bootstrap_env.sh
+
+      - name: Self-test — preflight_env + diagnose wording agreement (#108)
+        run: /bin/bash plugins/lean4/tests/test_preflight_env.sh
+
+      # These hook self-tests existed but ran in NO workflow (the same
+      # silent-coverage-gap class #146/#147 fixed for the script suites) —
+      # wire them in here so they actually execute.
+      - name: Self-test — guardrails hook
+        run: /bin/bash plugins/lean4/tests/test_guardrails.sh
+
+      - name: Self-test — validate_user_prompt hook
+        run: /bin/bash plugins/lean4/tests/test_validate_user_prompt.sh
+
+      - name: Self-test — native Codex plugin adapter
+        run: /bin/bash plugins/lean4/tests/test_codex_adapter.sh
+
+      - name: Runtime smoke — cycle_tracker.sh under /bin/bash
+        run: /bin/bash plugins/lean4/tests/test_bash3_smoke.sh
